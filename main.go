@@ -9,7 +9,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 )
 type pkg struct{
@@ -49,7 +51,6 @@ func getIPrange(appmess string) string {
 
 //device
 var (
-	// device       string = "eth0"
 	snapshot_len int32  = 1024
 	promiscuous  bool   = false
 	err          error
@@ -57,6 +58,28 @@ var (
 	handle       *pcap.Handle
 )
 
+
+func setDay(date  string )  (string,bool){
+	flag:=false
+	day:=time.Now().Format("2006-01-02")
+	if  strings.Split(date,"-")[2] !=strings.Split(day,"-")[2]{
+		flag=true
+	}
+	return  day,flag
+}
+
+
+func cleanMess(stream_mess *streamMess) (streamMess) {
+
+		stream_mess.HostIn.External=0
+		stream_mess.HostIn.Local=0
+		stream_mess.HostOut.External=0
+		stream_mess.HostOut.Local=0
+		detail_dict:=make(map[string]*detail)
+		stream_mess.Detail=detail_dict
+
+	return *stream_mess
+}
 
 func getIP(dev string) string{
 	var ip string
@@ -83,14 +106,17 @@ func getIP(dev string) string{
 }
 
 
-func makeMess(stream_mess  streamMess) streamMess {
+func makeMess(stream_mess  *streamMess) streamMess {
 	stream_mess.HostIn.All=stream_mess.HostIn.Local+stream_mess.HostIn.External
 	stream_mess.HostOut.All=stream_mess.HostOut.Local+stream_mess.HostOut.External
 	stream_mess.Host.Local=stream_mess.HostOut.Local+stream_mess.HostIn.Local
 	stream_mess.Host.External=stream_mess.HostOut.External+stream_mess.HostIn.External
 	stream_mess.Host.All=stream_mess.Host.Local+stream_mess.Host.External
 	stream_mess.Time=time.Now().Format("2006-01-02 15:04:05")
-	return stream_mess
+	return *stream_mess
+	
+	
+	
 }
 
 func streamInit(file string) (streamMess,bool) {
@@ -106,9 +132,8 @@ func streamInit(file string) (streamMess,bool) {
 }
 
 
-func streamSend(stream_mess *streamMess,conn  net.Conn){
-	stream:=makeMess(*stream_mess)
-	stream_json, _ := json.Marshal(stream)
+func streamSend(stream_mess streamMess,conn  net.Conn){
+	stream_json, _ := json.Marshal(stream_mess)
 	_, err := conn.Write([]byte(stream_json))
 	if err != nil {
 		log.Println("[ERROR] ", err)
@@ -117,10 +142,9 @@ func streamSend(stream_mess *streamMess,conn  net.Conn){
 
 }
 
-func streamSave(stream_mess *streamMess,file string){
-
-	stream:=makeMess(*stream_mess)
-	stream_json, _ := json.Marshal(stream)
+func streamSave(stream_mess streamMess,file string){
+	stream_json, _ := json.Marshal(stream_mess)
+	fmt.Println(string(stream_json))
 	err := ioutil.WriteFile(file, stream_json, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -145,64 +169,59 @@ func streamGet(stream_mess *streamMess ,dev string) {
 	if err != nil { log.Fatal(err) }
 	defer handle.Close()
 	// Set filter
-	var filter string = "tcp and udp"
+	var filter string = ""
 	handle.SetBPFFilter(filter)
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	for packet := range packetSource.Packets() {
-
-		if packet.ApplicationLayer() == nil  {
+	//for packet := range packetSource.Packets() {
+	for {
+		packet := <- packetSource.Packets()
+		if packet.NetworkLayer() == nil  {
 			continue
 		}
-		fmt.Println(len(packet.Data()))
 		ipLayer  := packet.Layer(layers.LayerTypeIPv4)
 		ip, ok := ipLayer.(*layers.IPv4)
 		if ok {
-				allLen:=int64(len(packet.Data()))
+			allLen:=int64(len(packet.Data()))
 
 			//out
-				if 	ip.SrcIP.String()==hostip {
-					key_ip:=ip.DstIP.String()
-					_,ok:=stream_mess.Detail[key_ip]
-					if !ok {
-						stream_mess.Detail[key_ip]=&detail{}
-					}
-					stream_mess.Detail[key_ip].Out=allLen+stream_mess.Detail[key_ip].Out
-					//local
-					if getIPrange(hostip)==getIPrange(key_ip) {
-						stream_mess.HostOut.Local=allLen
-
-					//external
-					}else {
-						stream_mess.HostOut.External=allLen
-					}
-
-				//in
-				}else  if  ip.DstIP.String()==hostip{
-					key_ip:=ip.SrcIP.String()
-					_,ok:=stream_mess.Detail[key_ip]
-					if !ok {
-						stream_mess.Detail[key_ip]=&detail{}
-					}
-					stream_mess.Detail[key_ip].In=allLen+stream_mess.Detail[key_ip].In
-
-					//local
-					if getIPrange(hostip)==getIPrange(key_ip) {
-						stream_mess.HostIn.Local=allLen
-
-					//external
-					}else {
-						stream_mess.HostIn.External=allLen
-					}
-
+			if 	ip.SrcIP.String()==hostip {
+				key_ip:=ip.DstIP.String()
+				_,ok:=stream_mess.Detail[key_ip]
+				if !ok {
+					stream_mess.Detail[key_ip]=&detail{}
 				}
+				stream_mess.Detail[key_ip].Out=allLen+stream_mess.Detail[key_ip].Out
+				//local
+				if getIPrange(hostip)==getIPrange(key_ip) {
+
+					stream_mess.HostOut.Local=allLen+stream_mess.HostOut.Local
+
+				//external
+				}else {
+					stream_mess.HostOut.External=allLen+stream_mess.HostOut.External
+				}
+
+			//in
+			}else  if  ip.DstIP.String()==hostip{
+				key_ip:=ip.SrcIP.String()
+				_,ok:=stream_mess.Detail[key_ip]
+				if !ok {
+					stream_mess.Detail[key_ip]=&detail{}
+				}
+				stream_mess.Detail[key_ip].In=allLen+stream_mess.Detail[key_ip].In
+
+				//local
+				if getIPrange(hostip)==getIPrange(key_ip) {
+					stream_mess.HostIn.Local=allLen+stream_mess.HostIn.Local
+
+				//external
+				}else {
+					stream_mess.HostIn.External=allLen+stream_mess.HostIn.External
+				}
+
+			}
 		}
-		//-----------------------------------------------------------------------------------
-		//	fmt.Println(packet.Metadata().Timestamp.Unix())
-		//	fmt.Println(packet.Metadata().Length)
-		//	fmt.Println(packet.Metadata().CaptureLength)
-		//-----------------------------------------------------------------------------------
-		//	printPacketInfo(packet)
 	}
 
 }
@@ -213,44 +232,44 @@ func streamGet(stream_mess *streamMess ,dev string) {
 
 
 func main(){
+	dev := os.Args[1]
+	fmt.Println(dev)
+	if dev =="" {
+		log.Println("[ERROR] Miss a param ......")
+		return
+	}
 	file:="./stream.tmp"
-	dev :="\\Device\\NPF_{6C139085-9D00-4A06-8658-FB9448DFBB9C}"
-	stream_mess,ok :=streamInit(file)
-	if ok{
-		// write file
-		go func() {
-			for {
-				streamSave(&stream_mess, file)
-				time.Sleep(1*time.Minute)
-			}
-		}()
 
-		//go  streamSend(&stream_mess)
-		streamGet(&stream_mess,dev)
 
-	}else {
-		var stream_mess streamMess
+	//dev :="\\Device\\NPF_{2E16E742-1AC5-4110-89A6-8C4FFEA78F31}"
+
+
+	var stream_mess streamMess
+	var ok bool
+	stream_mess,_ =streamInit(file)
+	if stream_mess.Detail ==nil{
 		detail_dict:=make(map[string]*detail)
 		stream_mess.Detail=detail_dict
-		// write file
-		go func() {
-			for {
-				streamSave(&stream_mess, file)
-				time.Sleep(1*time.Minute)
-			}
-		}()
-		//go  streamSend(&stream_mess)
-		streamGet(&stream_mess,dev)
-
-
 	}
 
 
+	// write file
+	go func() {
+		var stream streamMess
+		date:=time.Now().Format("2006-01-02")
+		for {
+			date,ok=setDay(date)
+			if ok {
+				stream=cleanMess(&stream_mess)
+			} else {
+				stream=makeMess(&stream_mess)
+			}
+			streamSave(stream, file)
+			time.Sleep(1*time.Minute)
+		}
+	}()
 
-
-
-
-
+	streamGet(&stream_mess,dev)
 
 }
 
