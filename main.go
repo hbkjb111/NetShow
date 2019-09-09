@@ -48,6 +48,17 @@ func getIPrange(appmess string) string {
 }
 
 
+func getIPlist( ip string,local_ips []string) bool{
+	flag:=false
+	for _,local_ip :=range  local_ips {
+		if ip ==local_ip {
+			flag=true
+		}
+
+	}
+	return flag
+}
+
 
 //device
 var (
@@ -154,7 +165,7 @@ func streamSave(stream_mess streamMess,file string){
 
 
 
-func streamGet(stream_mess *streamMess ,dev string) {
+func streamGet(stream_mess *streamMess ,dev string,local_ips []string) {
 
 
 	hostip:=getIP(dev)
@@ -193,7 +204,7 @@ func streamGet(stream_mess *streamMess ,dev string) {
 				}
 				stream_mess.Detail[key_ip].Out=allLen+stream_mess.Detail[key_ip].Out
 				//local
-				if getIPrange(hostip)==getIPrange(key_ip) {
+				if getIPrange(hostip)==getIPrange(key_ip) || getIPlist(key_ip,local_ips) {
 
 					stream_mess.HostOut.Local=allLen+stream_mess.HostOut.Local
 
@@ -212,7 +223,7 @@ func streamGet(stream_mess *streamMess ,dev string) {
 				stream_mess.Detail[key_ip].In=allLen+stream_mess.Detail[key_ip].In
 
 				//local
-				if getIPrange(hostip)==getIPrange(key_ip) {
+				if getIPrange(hostip)==getIPrange(key_ip)|| getIPlist(key_ip,local_ips) {
 					stream_mess.HostIn.Local=allLen+stream_mess.HostIn.Local
 
 				//external
@@ -233,7 +244,9 @@ func streamGet(stream_mess *streamMess ,dev string) {
 
 func main(){
 	dev := os.Args[1]
-	fmt.Println(dev)
+
+	var local_ips []string
+
 	if dev =="" {
 		log.Println("[ERROR] Miss a param ......")
 		return
@@ -269,7 +282,7 @@ func main(){
 		}
 	}()
 
-	streamGet(&stream_mess,dev)
+	streamGet(&stream_mess,dev,local_ips)
 
 }
 
