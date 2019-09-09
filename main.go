@@ -8,7 +8,6 @@ import (
 	"github.com/google/gopacket/pcap"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -142,16 +141,16 @@ func streamInit(file string) (streamMess,bool) {
 	return  conf,flag
 }
 
-
-func streamSend(stream_mess streamMess,conn  net.Conn){
-	stream_json, _ := json.Marshal(stream_mess)
-	_, err := conn.Write([]byte(stream_json))
-	if err != nil {
-		log.Println("[ERROR] ", err)
-
-	}
-
-}
+//
+//func streamSend(stream_mess streamMess,conn  net.Conn){
+//	stream_json, _ := json.Marshal(stream_mess)
+//	_, err := conn.Write([]byte(stream_json))
+//	if err != nil {
+//		log.Println("[ERROR] ", err)
+//
+//	}
+//
+//}
 
 func streamSave(stream_mess streamMess,file string){
 	stream_json, _ := json.Marshal(stream_mess)
